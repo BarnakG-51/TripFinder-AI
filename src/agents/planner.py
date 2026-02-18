@@ -14,6 +14,10 @@ def planner_node(state: AgentState):
     budget = state.get("budget", 5000)
     origin = state.get("origin", "New York")
     num_days = state.get("num_days", 5)
+    # Ensure num_days is at least 1
+    if num_days <= 0:
+        num_days = 1
+        print(f"[PLANNER] Warning: Invalid num_days, using default of 1")
     current_cost = state.get("current_total_cost", 0)
     
     # Calculate budget allocation (rule-based approach)
@@ -34,7 +38,7 @@ def planner_node(state: AgentState):
         },
         "hotels": {
             "destination": destination,
-            "budget_per_night": hotel_budget / num_days if num_days > 0 else hotel_budget,
+            "budget_per_night": hotel_budget / num_days,
             "num_nights": num_days,
             "total_budget": hotel_budget,
             "search_required": True

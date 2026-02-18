@@ -61,7 +61,7 @@ def test_planner_researcher_flow():
     if researcher_result.get('itinerary'):
         print("\nItinerary breakdown:")
         for item in researcher_result['itinerary']:
-            print(f"  - {item.get('item')}: ${item.get('price')} - {item.get('description')}")
+            print(f"  - {item.get('name')}: ${item.get('price')} - {item.get('description')}")
     
     # Update state with researcher results
     state_after_researcher = {**state_after_planner, **researcher_result}

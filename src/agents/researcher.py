@@ -58,7 +58,7 @@ def researcher_node(state: AgentState):
                 # Add estimated flight cost to itinerary
                 estimated_flight_cost = 500  # Placeholder - could be extracted from search results
                 itinerary.append({
-                    "item": "Flight",
+                    "name": "Flight",
                     "description": f"Round trip to {destination}",
                     "price": estimated_flight_cost,
                     "source": "search_results" if search_tool else "placeholder"
@@ -82,7 +82,7 @@ def researcher_node(state: AgentState):
                 # Add estimated hotel cost to itinerary
                 estimated_hotel_cost = 400  # Placeholder - could be extracted from search results
                 itinerary.append({
-                    "item": "Hotel",
+                    "name": "Hotel",
                     "description": f"Accommodation in {destination}",
                     "price": estimated_hotel_cost,
                     "source": "search_results" if search_tool else "placeholder"
@@ -106,7 +106,7 @@ def researcher_node(state: AgentState):
                 # Add estimated activities cost to itinerary
                 estimated_activities_cost = 300  # Placeholder
                 itinerary.append({
-                    "item": "Activities & Attractions",
+                    "name": "Activities & Attractions",
                     "description": f"Tours and attractions in {destination}",
                     "price": estimated_activities_cost,
                     "source": "search_results" if search_tool else "placeholder"

@@ -2,6 +2,7 @@ from langgraph.graph import StateGraph, END
 from .state import AgentState
 
 #--- NODE IMPORTS ---
+from src.agents.prompt_parser import parse_prompt_node
 from src.agents.planner import planner_node
 from src.agents.researcher import researcher_node
 from src.agents.validator import validator_node
@@ -18,12 +19,14 @@ def should_continue(state: AgentState):
 workflow = StateGraph(AgentState)
 
 # 1. Add Nodes
+workflow.add_node("parser", parse_prompt_node)  # New: Parse user prompt first
 workflow.add_node("planner", planner_node)
 workflow.add_node("researcher", researcher_node)
 workflow.add_node("validator", validator_node)
 
 # 2. Define the Flow (Edges)
-workflow.set_entry_point("planner")
+workflow.set_entry_point("parser")  # Start with prompt parsing
+workflow.add_edge("parser", "planner")
 workflow.add_edge("planner", "researcher")
 workflow.add_edge("researcher", "validator")
 

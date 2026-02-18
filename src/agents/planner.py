@@ -1,5 +1,10 @@
 from ..state import AgentState
 
+# Budget allocation constants for plan variants
+OPTIMIZED_BUDGET_PCT = 0.96  # 96% of budget
+PREMIUM_BUDGET_PCT = 1.15    # 115% of budget
+LOW_BUDGET_PCT = 0.50        # 50% of budget
+
 def planner_node(state: AgentState):
     '''
     Generate THREE plan variants for the trip:
@@ -23,8 +28,8 @@ def planner_node(state: AgentState):
         print(f"[PLANNER] Warning: Invalid num_days, using default of 1")
     current_cost = state.get("current_total_cost", 0)
     
-    # Check if we're creating initial variants or replanning
-    selected_plan = state.get("selected_plan", "optimized")
+    # Select which plan to execute (default to optimized if not specified)
+    selected_plan = state.get("selected_plan") or "optimized"
     
     print(f"[PLANNER] Creating 3 plan variants for {destination}")
     print(f"[PLANNER] Base budget: ${budget:.2f}, Duration: {num_days} days")
@@ -32,33 +37,29 @@ def planner_node(state: AgentState):
     # Create 3 different plan variants
     plan_variants = {}
     
-    # 1. OPTIMIZED PLAN - 95-98% of budget (target 96%)
-    optimized_budget = budget * 0.96
+    # 1. OPTIMIZED PLAN
+    optimized_budget = budget * OPTIMIZED_BUDGET_PCT
     plan_variants["optimized"] = create_plan_for_budget(
         destination, origin, num_days, optimized_budget, 
         plan_type="optimized", original_budget=budget
     )
-    print(f"[PLANNER] ✓ Optimized Plan: ${optimized_budget:.2f} (96% of budget)")
+    print(f"[PLANNER] ✓ Optimized Plan: ${optimized_budget:.2f} ({OPTIMIZED_BUDGET_PCT*100:.0f}% of budget)")
     
-    # 2. PREMIUM EXPERIENCE - 110-120% of budget (target 115%)
-    premium_budget = budget * 1.15
+    # 2. PREMIUM EXPERIENCE
+    premium_budget = budget * PREMIUM_BUDGET_PCT
     plan_variants["premium"] = create_plan_for_budget(
         destination, origin, num_days, premium_budget,
         plan_type="premium", original_budget=budget
     )
-    print(f"[PLANNER] ✓ Premium Plan: ${premium_budget:.2f} (115% of budget)")
+    print(f"[PLANNER] ✓ Premium Plan: ${premium_budget:.2f} ({PREMIUM_BUDGET_PCT*100:.0f}% of budget)")
     
-    # 3. LOW BUDGET - 50% of budget
-    low_budget = budget * 0.50
+    # 3. LOW BUDGET
+    low_budget = budget * LOW_BUDGET_PCT
     plan_variants["low_budget"] = create_plan_for_budget(
         destination, origin, num_days, low_budget,
         plan_type="low_budget", original_budget=budget
     )
-    print(f"[PLANNER] ✓ Low Budget Plan: ${low_budget:.2f} (50% of budget)")
-    
-    # Select which plan to execute (can be overridden by state)
-    if not state.get("selected_plan"):
-        selected_plan = "optimized"  # default
+    print(f"[PLANNER] ✓ Low Budget Plan: ${low_budget:.2f} ({LOW_BUDGET_PCT*100:.0f}% of budget)")
     
     print(f"[PLANNER] Selected plan for execution: {selected_plan}")
     

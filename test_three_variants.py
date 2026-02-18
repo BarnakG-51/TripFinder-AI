@@ -8,6 +8,7 @@ This demonstrates:
 """
 
 from src.graph import app
+from src.agents.planner import OPTIMIZED_BUDGET_PCT, PREMIUM_BUDGET_PCT, LOW_BUDGET_PCT
 
 
 def print_section(title):
@@ -174,9 +175,9 @@ def test_variant_execution():
         print(f"{res['variant']:<20} ${res['cost']:<14,.2f} {res['items']:<10} {within_budget:<15} {valid:<10}")
     
     print("\n📊 Analysis:")
-    print(f"  • Optimized plan should be ~96% of budget (${base_budget * 0.96:,.2f})")
-    print(f"  • Premium plan should be ~115% of budget (${base_budget * 1.15:,.2f})")
-    print(f"  • Low budget plan should be ~50% of budget (${base_budget * 0.50:,.2f})")
+    print(f"  • Optimized plan should be ~{OPTIMIZED_BUDGET_PCT*100:.0f}% of budget (${base_budget * OPTIMIZED_BUDGET_PCT:,.2f})")
+    print(f"  • Premium plan should be ~{PREMIUM_BUDGET_PCT*100:.0f}% of budget (${base_budget * PREMIUM_BUDGET_PCT:,.2f})")
+    print(f"  • Low budget plan should be ~{LOW_BUDGET_PCT*100:.0f}% of budget (${base_budget * LOW_BUDGET_PCT:,.2f})")
 
 
 def test_full_workflow_with_prompt():

@@ -37,15 +37,15 @@ def parse_prompt_node(state: AgentState):
     # Extract destination (common patterns)
     destination = state.get("destination", "Paris")  # default
     destination_patterns = [
-        r"(?:to|visit|in)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:for|from|,|\$)",
-        r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+trip",
-        r"trip to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+        r"(?:to|visit|in)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(?:for|from|,|\$)",
+        r"([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+trip",
+        r"trip to\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)",
     ]
     
     for pattern in destination_patterns:
         match = re.search(pattern, user_prompt, re.IGNORECASE)
         if match:
-            destination = match.group(1).strip()
+            destination = match.group(1).strip().title()
             break
     
     # Extract budget (look for dollar amounts or numbers with "budget")
@@ -66,14 +66,14 @@ def parse_prompt_node(state: AgentState):
     # Extract origin (where traveling from)
     origin = state.get("origin", "New York")  # default
     origin_patterns = [
-        r"from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:to|for|,)",
-        r"(?:leaving from|departing from|starting from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)"
+        r"from\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(?:to|for|,)",
+        r"(?:leaving from|departing from|starting from)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)"
     ]
     
     for pattern in origin_patterns:
         match = re.search(pattern, user_prompt, re.IGNORECASE)
         if match:
-            origin = match.group(1)
+            origin = match.group(1).strip().title()
             break
     
     # Extract number of days

@@ -1,3 +1,4 @@
 langchain-groq==1.1.2
 langgraph==1.0.8
 tavily-python
+googlemaps

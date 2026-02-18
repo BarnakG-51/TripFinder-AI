@@ -44,12 +44,16 @@ def researcher_node(state: AgentState):
         task_type = task.get("task_type")
         print(f"Executing task: {task.get('description')}")
         
-        if task_type == "flights" and search_tool:
+        if task_type == "flights":
             # Search for flights
             try:
-                search_query = task.get("search_query")
-                results = search_tool.search(search_query, search_depth="basic", max_results=3)
-                research_results["flights"] = results
+                if search_tool:
+                    search_query = task.get("search_query")
+                    results = search_tool.search(search_query, search_depth="basic", max_results=3)
+                    research_results["flights"] = results
+                    print("  - Searched for flights using Tavily API")
+                else:
+                    print("  - Using placeholder flight data (no API key)")
                 
                 # Add estimated flight cost to itinerary
                 estimated_flight_cost = 500  # Placeholder - could be extracted from search results
@@ -57,19 +61,23 @@ def researcher_node(state: AgentState):
                     "item": "Flight",
                     "description": f"Round trip to {destination}",
                     "price": estimated_flight_cost,
-                    "source": "search_results"
+                    "source": "search_results" if search_tool else "placeholder"
                 })
                 total_cost += estimated_flight_cost
-                print(f"  - Found flight options, estimated cost: ${estimated_flight_cost}")
+                print(f"  - Added flight to itinerary, cost: ${estimated_flight_cost}")
             except Exception as e:
                 print(f"  - Error searching flights: {e}")
         
-        elif task_type == "hotels" and search_tool:
+        elif task_type == "hotels":
             # Search for hotels
             try:
-                search_query = task.get("search_query")
-                results = search_tool.search(search_query, search_depth="basic", max_results=3)
-                research_results["hotels"] = results
+                if search_tool:
+                    search_query = task.get("search_query")
+                    results = search_tool.search(search_query, search_depth="basic", max_results=3)
+                    research_results["hotels"] = results
+                    print("  - Searched for hotels using Tavily API")
+                else:
+                    print("  - Using placeholder hotel data (no API key)")
                 
                 # Add estimated hotel cost to itinerary
                 estimated_hotel_cost = 400  # Placeholder - could be extracted from search results
@@ -77,19 +85,23 @@ def researcher_node(state: AgentState):
                     "item": "Hotel",
                     "description": f"Accommodation in {destination}",
                     "price": estimated_hotel_cost,
-                    "source": "search_results"
+                    "source": "search_results" if search_tool else "placeholder"
                 })
                 total_cost += estimated_hotel_cost
-                print(f"  - Found hotel options, estimated cost: ${estimated_hotel_cost}")
+                print(f"  - Added hotel to itinerary, cost: ${estimated_hotel_cost}")
             except Exception as e:
                 print(f"  - Error searching hotels: {e}")
         
-        elif task_type == "attractions" and search_tool:
+        elif task_type == "attractions":
             # Search for attractions
             try:
-                search_query = task.get("search_query")
-                results = search_tool.search(search_query, search_depth="basic", max_results=5)
-                research_results["attractions"] = results
+                if search_tool:
+                    search_query = task.get("search_query")
+                    results = search_tool.search(search_query, search_depth="basic", max_results=5)
+                    research_results["attractions"] = results
+                    print("  - Searched for attractions using Tavily API")
+                else:
+                    print("  - Using placeholder attraction data (no API key)")
                 
                 # Add estimated activities cost to itinerary
                 estimated_activities_cost = 300  # Placeholder
@@ -97,10 +109,10 @@ def researcher_node(state: AgentState):
                     "item": "Activities & Attractions",
                     "description": f"Tours and attractions in {destination}",
                     "price": estimated_activities_cost,
-                    "source": "search_results"
+                    "source": "search_results" if search_tool else "placeholder"
                 })
                 total_cost += estimated_activities_cost
-                print(f"  - Found attraction options, estimated cost: ${estimated_activities_cost}")
+                print(f"  - Added attractions to itinerary, cost: ${estimated_activities_cost}")
             except Exception as e:
                 print(f"  - Error searching attractions: {e}")
         

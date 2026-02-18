@@ -123,11 +123,11 @@ def researcher_node(state: AgentState):
                     # Example: Calculate distance from airport to city center
                     # This would ideally use actual locations from search results
                     origin = f"{destination} Airport"
-                    destination_center = f"{destination} City Center"
+                    city_center = f"{destination} City Center"
                     
                     distance_result = calculate_distance_between_places.invoke({
                         "origin": origin,
-                        "destination": destination_center
+                        "destination": city_center
                     })
                     
                     research_results["distances"] = distance_result

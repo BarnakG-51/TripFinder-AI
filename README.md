@@ -1,14 +1,31 @@
 # TripFinder-AI Planner Tool
 
-This project implements an AI-powered trip planning system that uses a planner-researcher architecture to find hotels, flights, and travel spots within a specified budget.
+This project implements an AI-powered trip planning system with **3-variant plan generation** (Optimized, Premium, Low Budget) that uses a planner-researcher architecture to find hotels, flights, and travel spots.
+
+## Key Features
+
+- 🤖 **Natural Language Processing**: Parse user prompts to extract trip details
+- 📊 **3-Variant Planning**: Automatically generate Optimized, Premium, and Low Budget plans
+- 🔍 **Multi-Tool Research**: Search for flights, hotels, and activities using specialized tools
+- 💰 **Smart Budget Allocation**: Different allocation strategies per variant
+- 📏 **Distance Calculation**: Calculate travel distances and routes
+- ✅ **Automatic Validation**: Ensure plans stay within budget constraints
 
 ## Architecture
 
-The system uses a graph-based workflow with three main nodes:
+The system uses a graph-based workflow with four main nodes:
 
-1. **Planner Node** (`src/agents/planner.py`)
-   - Creates a structured search plan based on destination, budget, and trip duration
-   - Allocates budget across flights (40%), hotels (35%), and activities (25%)
+0. **Prompt Parser Node** (`src/agents/prompt_parser.py`) - NEW!
+   - Parses natural language user prompts
+   - Extracts destination, origin, budget, and trip duration
+   - Uses pattern matching (future: LLM-based parsing)
+
+1. **Planner Node** (`src/agents/planner.py`) - ENHANCED!
+   - **Generates 3 distinct plan variants**:
+     - **Optimized Plan**: 96% of budget, balanced allocation (40/35/25)
+     - **Premium Experience**: 115% of budget, quality focus (35/40/25, min 4.5★ hotels, direct flights)
+     - **Low Budget Plan**: 50% of budget, cost-optimized (45/30/25, min 3.0★ hotels)
+   - Each variant has custom budget allocation and preferences
    - Generates specific search queries for the researcher
 
 2. **Researcher Node** (`src/agents/researcher.py`)
@@ -21,6 +38,24 @@ The system uses a graph-based workflow with three main nodes:
    - Validates the total cost against the budget
    - Returns errors if budget is exceeded
    - Triggers replanning if necessary
+
+## 3-Variant System
+
+### Variant Comparison
+
+| Variant | Budget Target | Flight % | Hotel % | Activities % | Hotel Rating | Flight Pref |
+|---------|--------------|----------|---------|--------------|--------------|-------------|
+| **Optimized** | 96% | 40% | 35% | 25% | 3.5★ | Cheapest |
+| **Premium** | 115% | 35% | 40% | 25% | 4.5★ | Direct |
+| **Low Budget** | 50% | 45% | 30% | 25% | 3.0★ | Cheapest |
+
+### How It Works
+
+1. User provides a natural language prompt (e.g., "Paris trip from New York for 5 days, $3000 budget")
+2. Prompt parser extracts structured information
+3. Planner generates all 3 variants simultaneously
+4. Selected variant (default: optimized) is executed by researcher
+5. All 3 variants available for comparison in results
 
 ## Tools
 
@@ -45,8 +80,8 @@ The researcher uses three specialized tools:
 ## State Management
 
 The `AgentState` (`src/state.py`) maintains:
-- **User Input**: destination, origin, budget, num_days
-- **Planning**: search_plan (queries for researcher)
+- **User Input**: user_prompt, destination, origin, budget, num_days
+- **Planning**: plan_variants (all 3 variants), selected_plan, search_plan (active variant)
 - **Research**: research_results (prices, distances, options)
 - **Output**: itinerary, current_total_cost
 - **Validation**: is_valid, errors
@@ -54,32 +89,77 @@ The `AgentState` (`src/state.py`) maintains:
 ## Workflow
 
 ```
-User Input → Planner → Researcher → Validator → Output
-                ↑                        |
-                |_____(if invalid)_______|
+User Prompt → Parser → Planner (3 variants) → Researcher → Validator → Output
+                           ↑                                    |
+                           |____________(if invalid)____________|
 ```
 
-1. User provides destination, origin, budget, and trip duration
-2. Planner creates a structured search plan with budget allocation
-3. Researcher executes searches using tools and builds itinerary
-4. Validator checks if total cost is within budget
+1. User provides a natural language prompt
+2. Parser extracts destination, origin, budget, and trip duration
+3. Planner generates 3 plan variants (Optimized, Premium, Low Budget)
+4. Researcher executes the selected variant using tools and builds itinerary
+5. Validator checks if total cost is within budget
 5. If invalid, returns to planner for adjustments
 6. If valid, returns final itinerary
 
 ## Usage
 
+### Option 1: Natural Language Prompt (Recommended)
+
 ```python
 from src.graph import app
 
-# Define initial state
+# Use natural language prompt
 state = {
     "messages": [],
+    "user_prompt": "I want to visit Paris from New York for 5 days with $3000 budget",
+    "destination": "",
+    "origin": "",
+    "budget": 0,
+    "num_days": 0,
+    "current_total_cost": 0,
+    "itinerary": [],
+    "plan_variants": None,
+    "selected_plan": "optimized",  # "optimized", "premium", or "low_budget"
+    "search_plan": None,
+    "research_results": None,
+    "is_valid": False,
+    "errors": []
+}
+
+# Run the workflow
+result = app.invoke(state)
+
+# Access all 3 plan variants
+for variant_name, variant_plan in result["plan_variants"].items():
+    budget = variant_plan["budget_allocation"]["total_budget"]
+    print(f"{variant_name}: ${budget:.2f}")
+
+# Access executed variant results
+print(f"Selected: {result['selected_plan']}")
+print(f"Total Cost: ${result['current_total_cost']}")
+print(f"Valid: {result['is_valid']}")
+for item in result['itinerary']:
+    print(f"- {item['item']}: ${item['price']}")
+```
+
+### Option 2: Direct Parameters
+
+```python
+from src.graph import app
+
+# Provide parameters directly
+state = {
+    "messages": [],
+    "user_prompt": "",  # Empty when using direct parameters
     "destination": "Paris",
     "origin": "New York",
     "budget": 3000,
     "num_days": 5,
     "current_total_cost": 0,
     "itinerary": [],
+    "plan_variants": None,
+    "selected_plan": "optimized",
     "search_plan": None,
     "research_results": None,
     "is_valid": False,
@@ -101,8 +181,31 @@ for item in result['itinerary']:
 Run the integration tests:
 
 ```bash
-# Main integration test
+# Original integration test
 python test_planner_integration.py
+
+# Edge cases and error scenarios
+python test_edge_cases.py
+
+# 3-variant system test (NEW!)
+python test_three_variants.py
+```
+
+## Demos
+
+```bash
+# Original demo (single plan)
+python demo.py
+
+# 3-variant comparison demo (NEW!)
+python demo_variants.py
+```
+
+The variant demo shows:
+- Natural language prompt parsing
+- Side-by-side comparison of all 3 variants
+- Detailed budget allocations and preferences
+- Complete itineraries for each variant
 
 # Edge cases and error scenarios
 python test_edge_cases.py

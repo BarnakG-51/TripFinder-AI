@@ -6,5 +6,55 @@ def planner_node(state: AgentState):
     and also the time limit specified by the user.
     '''
     print("--- PLANNING ---")
-    # Logic: LLM breaks down the request
-    return {"messages": ["Planner: I need to find flights and hotels."]}
+    
+    # Extract information from state
+    destination = state.get("destination", "Unknown")
+    budget = state.get("budget", 0)
+    errors = state.get("errors", [])
+    
+    # Check if this is a replan (has errors from validator)
+    if errors:
+        print(f"Replanning due to errors: {errors}")
+    
+    # Create a structured plan with tasks for the researcher
+    plan = {
+        "destination": destination,
+        "budget": budget,
+        "tasks": [
+            {
+                "task_type": "flights",
+                "description": f"Search for flights to {destination}",
+                "search_query": f"best flight deals to {destination}",
+                "priority": 1
+            },
+            {
+                "task_type": "hotels",
+                "description": f"Find hotels in {destination}",
+                "search_query": f"best hotels in {destination}",
+                "priority": 2
+            },
+            {
+                "task_type": "attractions",
+                "description": f"Identify travel spots and attractions in {destination}",
+                "search_query": f"top attractions and places to visit in {destination}",
+                "priority": 3
+            },
+            {
+                "task_type": "distances",
+                "description": f"Calculate distances between locations in {destination}",
+                "priority": 4
+            }
+        ],
+        "requirements": {
+            "budget_constraint": budget,
+            "optimize_for": "cost_and_experience"
+        }
+    }
+    
+    print(f"Plan created with {len(plan['tasks'])} tasks for destination: {destination}")
+    
+    return {
+        "plan": plan,
+        "messages": [f"Planner: Created plan to search for flights, hotels, and attractions in {destination} within budget of ${budget}"]
+    }
+

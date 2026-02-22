@@ -1,4 +1,4 @@
-from typing import Annotated, TypedDict, List, Union
+from typing import Annotated, TypedDict, List, Union, Optional
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -11,6 +11,9 @@ class AgentState(TypedDict):
     destination: str
     budget: float
     current_total_cost: float
+    
+    # Plan from the planner to be sent to researcher
+    plan: Optional[dict]
     
     # The actual plan being built
     itinerary: List[dict] 

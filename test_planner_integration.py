@@ -19,7 +19,7 @@ def test_planner_researcher_workflow():
         "messages": [],
         "destination": "Paris",
         "origin": "New York",
-        "budget": 3000,
+        "budget": 4000,
         "num_days": 5,
         "current_total_cost": 0,
         "itinerary": [],

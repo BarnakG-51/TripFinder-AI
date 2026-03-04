@@ -103,25 +103,34 @@ def create_plan_for_budget(destination, origin, num_days, budget, plan_type="opt
     """
     # Adjust allocation percentages based on plan type
     if plan_type == "premium":
-        # Premium: More on hotels and activities for better experience
+        # Premium: More on hotels; finer dining gets more meals budget
         flight_pct = 0.35
         hotel_pct = 0.40
-        activities_pct = 0.25
+        activities_pct = 0.15
+        meals_pct = 0.10
     elif plan_type == "low_budget":
-        # Low budget: Prioritize flights, economize on accommodation
+        # Low budget: Prioritize flights, economize on accommodation and dining
         flight_pct = 0.45
         hotel_pct = 0.30
-        activities_pct = 0.25
+        activities_pct = 0.15
+        meals_pct = 0.10
     else:  # optimized
         # Optimized: Balanced allocation
         flight_pct = 0.40
         hotel_pct = 0.35
-        activities_pct = 0.25
-    
+        activities_pct = 0.15
+        meals_pct = 0.10
+
     flight_budget = budget * flight_pct
     hotel_budget = budget * hotel_pct
     activities_budget = budget * activities_pct
-    
+    meals_budget = budget * meals_pct
+
+    # 2 meals per day (e.g. lunch + dinner); premium plans assume 3 meals
+    meals_per_day = 3 if plan_type == "premium" else 2
+    num_meals = num_days * meals_per_day
+    budget_per_meal = meals_budget / num_meals if num_meals > 0 else 25.0
+
     return {
         "plan_type": plan_type,
         "target_budget": budget,
@@ -144,20 +153,28 @@ def create_plan_for_budget(destination, origin, num_days, budget, plan_type="opt
         "travel_spots": {
             "destination": destination,
             "budget": activities_budget,
-            "interests": ["tourist attractions", "restaurants", "activities"],
+            "interests": ["tourist attractions", "local experiences", "activities"],
             "search_required": True,
             "priority": "quality" if plan_type == "premium" else "value"
+        },
+        "restaurants": {
+            "destination": destination,
+            "budget_per_meal": round(budget_per_meal, 2),
+            "num_meals": num_meals,
+            "cuisine": "fine dining" if plan_type == "premium" else "local cuisine",
         },
         "budget_allocation": {
             "total_budget": budget,
             "original_budget": original_budget or budget,
             "budget_percentage": (budget / original_budget * 100) if original_budget else 100,
-            "flight_allocation": flight_budget,
-            "hotel_allocation": hotel_budget,
-            "activities_allocation": activities_budget,
+            "flights": flight_budget,
+            "hotels": hotel_budget,
+            "activities": activities_budget,
+            "meals": meals_budget,
             "flight_pct": flight_pct * 100,
             "hotel_pct": hotel_pct * 100,
-            "activities_pct": activities_pct * 100
+            "activities_pct": activities_pct * 100,
+            "meals_pct": meals_pct * 100
         }
     }
 

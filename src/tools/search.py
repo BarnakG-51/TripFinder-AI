@@ -46,19 +46,19 @@ def search_hotels(destination: str,
         raise SearchError(f"Invalid budget: ${budget}. Budget must be positive.")
     
     try:
-        query = f"hotels in {destination} under ${budget} per night rating above {min_rating}"
+        star_label = "luxury" if min_rating >= 4.5 else ("4-star" if min_rating >= 4.0 else "3-star")
+        query = f"best {star_label} hotel in {destination} under ${int(budget)} per night review"
         if check_in and check_out:
-            query += f"from {check_in} to {check_out}"
+            query += f" available {check_in} to {check_out}"
 
         print(f"[SEARCH] Searching hotels with Tavily: {query}")
-
 
         #Perform Tavily Search
         response = tavily_client.search(
             query=query,
             search_depth="advanced",
             max_results=5,
-            include_domains=["booking.com", "agoda.com", "makemytrip.com", "tripadvisor.com"]
+            include_domains=["booking.com", "hotels.com", "tripadvisor.com", "agoda.com"]
         )
 
         #Check if we got search results
@@ -114,16 +114,16 @@ def search_flights(origin: str,
         raise SearchError(f"Invalid preference: {preferences}. Must be 'cheapest, 'direct' or 'fastest'")
     
     try:
-        query = f"flights from {origin} to {destination} under ${budget}"
+        query = f"flights from {origin} to {destination} under ${int(budget)}"
         if preferences == "direct":
-            query += "direct non-stop"
+            query += " direct non-stop"
         elif preferences == "fastest":
-            query += "fastest"
+            query += " fastest shortest duration"
         else:
-            query+="cheapest"
-        
+            query += " cheapest economy class"
+
         if date:
-            query += f"on {date}"
+            query += f" on {date}"
         print(f"[SEARCH] Searching flights with Tavily: {query}")
         
         # Perform Tavily search
@@ -131,7 +131,7 @@ def search_flights(origin: str,
             query=query,
             search_depth="advanced",
             max_results=5,
-            include_domains=["google.com/flights", "kayak.com", "skyscanner.com", "expedia.com"]
+            include_domains=["kayak.com", "skyscanner.com", "expedia.com", "momondo.com"]
         )
         
         # Check if we got results
@@ -240,27 +240,91 @@ def search_travel_spots(
         ) from e
 
 
+def search_restaurants(
+    destination: str,
+    cuisine: str = None,
+    budget_per_meal: float = None,
+    num_results: int = 5
+) -> List[Dict[str, Any]]:
+    """
+    Search for restaurants and dining options at the destination.
+
+    Args:
+        destination: City/location to search in
+        cuisine: Optional cuisine type filter (e.g. "Italian", "local")
+        budget_per_meal: Optional max price per person
+        num_results: How many results to retrieve
+
+    Returns:
+        List of restaurant options with prices and details
+    """
+    if not destination:
+        raise SearchError("Destination is required for restaurant search.")
+
+    try:
+        query = f"best restaurants in {destination}"
+        if cuisine:
+            query += f" {cuisine} cuisine"
+        if budget_per_meal:
+            query += f" under ${int(budget_per_meal)} per person"
+        else:
+            query += " highly rated must try"
+
+        print(f"[SEARCH] Searching restaurants with Tavily: {query}")
+
+        response = tavily_client.search(
+            query=query,
+            search_depth="advanced",
+            max_results=num_results,
+            include_domains=["tripadvisor.com", "yelp.com", "timeout.com", "thefork.com"]
+        )
+
+        if not response.get("results"):
+            raise SearchError(f"No restaurants found in {destination}.")
+
+        restaurants = _parse_restaurant_results(response, destination)
+
+        if not restaurants:
+            raise SearchError(
+                f"Could not parse restaurant results for {destination}. "
+                f"The search returned {len(response.get('results', []))} results but none matched criteria."
+            )
+
+        print(f"[SEARCH] Found {len(restaurants)} restaurants in {destination}")
+        return restaurants
+
+    except SearchError:
+        raise
+    except Exception as e:
+        raise SearchError(
+            f"Restaurant search failed for {destination}: {str(e)}. "
+            f"Check your Tavily API key and internet connection."
+        ) from e
+
+
 # ============ RESULT PARSERS ============
 
 def _parse_hotel_results(response: Dict, destination: str, budget: float, min_rating: float) -> List[Dict[str, Any]]:
     """Parse Tavily search results into hotel format."""
     hotels = []
-    
+
     for idx, result in enumerate(response.get("results", [])[:5]):
         try:
-            # Extract information from Tavily result
             title = result.get("title", "")
             content = result.get("content", "")
             url = result.get("url", "")
-            
-            # Estimate price based on budget
-            price_factor = 0.6 + (idx * 0.1)
-            estimated_price = min(budget * price_factor, budget)
-            
+
+            # Extract hotel name by stripping booking-site branding from title
+            name = _clean_title(title)
+
+            # Try to extract real price from content, fall back to budget estimate
+            real_price = _extract_price_per_night(content)
+            estimated_price = real_price if real_price else round(min(budget * (0.6 + idx * 0.1), budget), 2)
+
             hotel = {
-                "name": title.split("|")[0].strip() if "|" in title else title,
-                "price_per_night": round(estimated_price, 2),
-                "rating": min_rating + (0.5 if "luxury" in content.lower() else 0),
+                "name": name,
+                "price_per_night": estimated_price,
+                "rating": _extract_rating(content) or (min_rating + (0.5 if "luxury" in content.lower() else 0)),
                 "amenities": _extract_amenities(content),
                 "location": destination,
                 "url": url,
@@ -270,7 +334,7 @@ def _parse_hotel_results(response: Dict, destination: str, budget: float, min_ra
         except Exception as e:
             print(f"[SEARCH] Warning: Failed to parse hotel result {idx}: {e}")
             continue
-    
+
     return hotels
 
 
@@ -330,6 +394,33 @@ def _parse_travel_spot_results(response: Dict, destination: str, interests: List
             continue
     
     return spots
+
+
+def _parse_restaurant_results(response: Dict, destination: str) -> List[Dict[str, Any]]:
+    """Parse Tavily search results into restaurant format."""
+    restaurants = []
+
+    for idx, result in enumerate(response.get("results", [])[:10]):
+        try:
+            title = result.get("title", "")
+            content = result.get("content", "")
+            url = result.get("url", "")
+
+            restaurant = {
+                "name": _clean_title(title),
+                "cuisine_type": _extract_cuisine(title, content),
+                "price_per_person": _extract_meal_price(content),
+                "rating": _extract_rating(content),
+                "location": destination,
+                "url": url,
+                "description": content[:200] + "..." if len(content) > 200 else content
+            }
+            restaurants.append(restaurant)
+        except Exception as e:
+            print(f"[SEARCH] Warning: Failed to parse restaurant result {idx}: {e}")
+            continue
+
+    return restaurants
 
 
 # ============ HELPER FUNCTIONS ============
@@ -414,4 +505,70 @@ def _extract_fee(content: str) -> float:
         return 0.0
     
     return 15.0
+
+
+def _clean_title(title: str) -> str:
+    """Strip booking-site branding from page titles to get the property/restaurant name."""
+    import re
+    # Remove common site suffixes: "- Booking.com", "| TripAdvisor", "– Hotels.com", etc.
+    name = re.split(r'\s*[-|–—]\s*(?:booking\.com|tripadvisor|hotels\.com|agoda|yelp|timeout|thefork)', title, flags=re.IGNORECASE)[0]
+    # Also split on standalone " - " and " | " as a fallback
+    for sep in [" - ", " | ", " – "]:
+        if sep in name:
+            name = name.split(sep)[0]
+    return name.strip() or title.strip()
+
+
+def _extract_price_per_night(content: str) -> Optional[float]:
+    """Try to extract an explicit per-night price from hotel content."""
+    import re
+    # Patterns: "$120 per night", "$120/night", "120 USD per night"
+    match = re.search(
+        r'\$\s*(\d+(?:\.\d{2})?)\s*(?:per\s*night|/\s*night)',
+        content,
+        re.IGNORECASE
+    )
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def _extract_cuisine(title: str, content: str) -> str:
+    """Identify cuisine type from restaurant title and content."""
+    combined = (title + " " + content).lower()
+    cuisine_map = {
+        "italian": ["italian", "pizza", "pasta", "trattoria", "osteria"],
+        "french": ["french", "brasserie", "bistro", "patisserie"],
+        "japanese": ["japanese", "sushi", "ramen", "izakaya", "tempura"],
+        "chinese": ["chinese", "dim sum", "cantonese", "sichuan"],
+        "indian": ["indian", "curry", "tandoor", "masala", "biryani"],
+        "mexican": ["mexican", "tacos", "burrito", "cantina"],
+        "thai": ["thai", "pad thai", "tom yum"],
+        "american": ["american", "burger", "bbq", "diner", "steakhouse"],
+        "mediterranean": ["mediterranean", "greek", "lebanese", "hummus"],
+        "local": ["local", "traditional", "authentic", "regional", "classic"],
+    }
+    for cuisine, keywords in cuisine_map.items():
+        if any(kw in combined for kw in keywords):
+            return cuisine.title()
+    return "International"
+
+
+def _extract_meal_price(content: str) -> float:
+    """Extract average price per person from restaurant content."""
+    import re
+    # Look for explicit per-person pricing
+    match = re.search(
+        r'\$\s*(\d+(?:\.\d{2})?)\s*(?:per\s*person|pp|each|per\s*head)',
+        content,
+        re.IGNORECASE
+    )
+    if match:
+        return float(match.group(1))
+    # Fall back to any dollar amount in a reasonable meal-price range ($5-$150)
+    prices = re.findall(r'\$(\d+(?:\.\d{2})?)', content)
+    meal_prices = [float(p) for p in prices if 5 <= float(p) <= 150]
+    if meal_prices:
+        return round(min(meal_prices), 2)
+    return 25.0  # default fallback
 

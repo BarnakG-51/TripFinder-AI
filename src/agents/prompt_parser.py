@@ -40,6 +40,9 @@ def parse_prompt_node(state: AgentState):
         r"(?:to|visit|in)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(?:for|from|,|\$)",
         r"([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+trip",
         r"trip to\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)",
+        # Fallbacks — no trailing word required
+        r"(?:to|visit)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)",
+        r"in\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+for",
     ]
     
     for pattern in destination_patterns:
@@ -67,7 +70,9 @@ def parse_prompt_node(state: AgentState):
     origin = state.get("origin", "New York")  # default
     origin_patterns = [
         r"from\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(?:to|for|,)",
-        r"(?:leaving from|departing from|starting from)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)"
+        r"(?:leaving from|departing from|starting from)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)",
+        # Fallback — stop at common delimiters (with, under, $, a digit, end of string)
+        r"from\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)(?=\s+(?:with|under|budget|\d)|\s*,|\s*$)",
     ]
     
     for pattern in origin_patterns:

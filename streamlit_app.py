@@ -20,6 +20,7 @@ class BudgetAllocation(BaseModel):
     flights: float = 0.0
     hotels: float = 0.0
     activities: float = 0.0
+    meals: float = 0.0
 
 
 class PlanVariant(BaseModel):
@@ -205,6 +206,7 @@ with tab_variants:
                     ("Flights", alloc.flights),
                     ("Hotels", alloc.hotels),
                     ("Activities", alloc.activities),
+                    ("Meals", alloc.meals),
                 ]:
                     pct = (amount / alloc.total_budget * 100) if alloc.total_budget else 0
                     st.write(f"{category}: **${amount:,.0f}** ({pct:.0f}%)")

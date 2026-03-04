@@ -9,6 +9,7 @@ def validator_node(state: AgentState):
     flights = rr.get("flights", [])
     hotels = rr.get("hotels", [])
     activities = rr.get("activities", [])
+    restaurants = rr.get("restaurants", [])
     car_rental = rr.get("car_rental", {})
     cost_breakdown = rr.get("cost_breakdown", {})
     budget = state.get("budget", 0)
@@ -75,6 +76,18 @@ def validator_node(state: AgentState):
             "category": activity.get("category", "attraction"),
             "description": (activity.get("description") or "")[:150],
             "url": activity.get("url", "")
+        })
+
+    top_restaurants = sorted(restaurants, key=lambda r: r.get("rating", 0), reverse=True)[:3]
+    for restaurant in top_restaurants:
+        itinerary.append({
+            "type": "restaurant",
+            "name": restaurant.get("name", "Restaurant"),
+            "cost": restaurant.get("price_per_person", 25.0),
+            "cuisine_type": restaurant.get("cuisine_type", "International"),
+            "rating": restaurant.get("rating"),
+            "description": (restaurant.get("description") or "")[:150],
+            "url": restaurant.get("url", "")
         })
 
     if car_rental.get("total_cost"):

@@ -1,5 +1,5 @@
 from ..state import AgentState
-from ..tools.search import search_hotels, search_flights, search_travel_spots, SearchError
+from ..tools.search import search_hotels, search_flights, search_travel_spots, search_restaurants, SearchError
 from ..tools.finance import calculate_total_cost
 from ..tools.maps import calculate_total_distance
 
@@ -9,7 +9,7 @@ def researcher_node(state: AgentState):
     Research the web for prices, time taken and routes, return the different parameters to the validator.
 
     This node executes the search plan created by the planner using search, maps, and finance tools.
-    It looks up actual prices and distances for hotels, flights, and travel spots.
+    It looks up actual prices and distances for hotels, flights, travel spots, and restaurants.
     '''
     print("--- RESEARCHING ---")
 
@@ -25,6 +25,7 @@ def researcher_node(state: AgentState):
                 "flights": [],
                 "hotels": [],
                 "activities": [],
+                "restaurants": [],
                 "car_rental": {},
                 "cost_breakdown": {}
             },
@@ -38,11 +39,13 @@ def researcher_node(state: AgentState):
     flights = []
     hotels = []
     activities = []
+    restaurants = []
 
     # Hoist params before try blocks so they're always defined
     flight_params = search_plan.get("flights", {})
     hotel_params = search_plan.get("hotels", {})
     spot_params = search_plan.get("travel_spots", {})
+    restaurant_params = search_plan.get("restaurants", {})
     num_nights = hotel_params.get("num_nights", state.get("num_days", 5))
 
     # Search flights with error handling
@@ -53,7 +56,7 @@ def researcher_node(state: AgentState):
             budget=flight_params["budget"],
             preferences=flight_params.get("preferences", "cheapest")
         )
-    except SearchError as e:
+    except Exception as e:
         error_msg = f"Flight search failed: {str(e)}"
         print(f"[RESEARCHER ERROR] {error_msg}")
         errors.append(error_msg)
@@ -66,7 +69,7 @@ def researcher_node(state: AgentState):
             num_nights=num_nights,
             min_rating=hotel_params.get("min_rating", 3.0)
         )
-    except SearchError as e:
+    except Exception as e:
         error_msg = f"Hotel search failed: {str(e)}"
         print(f"[RESEARCHER ERROR] {error_msg}")
         errors.append(error_msg)
@@ -79,13 +82,25 @@ def researcher_node(state: AgentState):
             budget=spot_params["budget"],
             priority=spot_params.get("priority", "quality")
         )
-    except SearchError as e:
+    except Exception as e:
         error_msg = f"Activity search failed: {str(e)}"
         print(f"[RESEARCHER ERROR] {error_msg}")
         errors.append(error_msg)
 
+    # Search restaurants with error handling
+    try:
+        restaurants = search_restaurants(
+            destination=restaurant_params["destination"],
+            cuisine=restaurant_params.get("cuisine"),
+            budget_per_meal=restaurant_params.get("budget_per_meal")
+        )
+    except Exception as e:
+        error_msg = f"Restaurant search failed: {str(e)}"
+        print(f"[RESEARCHER ERROR] {error_msg}")
+        errors.append(error_msg)
+
     # Check if we have any results at all
-    if not flights and not hotels and not activities:
+    if not flights and not hotels and not activities and not restaurants:
         combined_error = " | ".join(errors)
         return {
             "messages": ["Researcher: All searches failed"],
@@ -93,6 +108,7 @@ def researcher_node(state: AgentState):
                 "flights": [],
                 "hotels": [],
                 "activities": [],
+                "restaurants": [],
                 "car_rental": {},
                 "cost_breakdown": {}
             },
@@ -126,6 +142,10 @@ def researcher_node(state: AgentState):
         cost_items.append({"category": "activities", "price": activity.get("entry_fee", 0)})
     if car_rental:
         cost_items.append({"category": "other", "price": car_rental.get("total_cost", 0)})
+    if restaurants:
+        num_meals = restaurant_params.get("num_meals", state.get("num_days", 5) * 2)
+        avg_meal_price = sum(r.get("price_per_person", 25.0) for r in restaurants[:5]) / min(len(restaurants), 5)
+        cost_items.append({"category": "meals", "price": round(avg_meal_price * num_meals, 2)})
 
     cost_breakdown = calculate_total_cost(cost_items)
     total_cost = cost_breakdown["total_cost"]
@@ -140,6 +160,8 @@ def researcher_node(state: AgentState):
         success_parts.append(f"{len(hotels)} hotels")
     if activities:
         success_parts.append(f"{len(activities)} activities")
+    if restaurants:
+        success_parts.append(f"{len(restaurants)} restaurants")
 
     message = f"Researcher: Found {', '.join(success_parts)} for {plan_type} plan"
     if errors:
@@ -151,6 +173,7 @@ def researcher_node(state: AgentState):
             "flights": flights,
             "hotels": hotels,
             "activities": activities,
+            "restaurants": restaurants,
             "car_rental": car_rental,
             "cost_breakdown": cost_breakdown
         },

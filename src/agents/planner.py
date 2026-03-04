@@ -27,9 +27,21 @@ def planner_node(state: AgentState):
         num_days = 1
         print(f"[PLANNER] Warning: Invalid num_days, using default of 1")
     current_cost = state.get("current_total_cost", 0)
-    
+    replan_count = state.get("replan_count", 0)
+    replan_errors = state.get("errors", [])
+
     # Select which plan to execute (default to optimized if not specified)
     selected_plan = state.get("selected_plan") or "optimized"
+
+    # Auto-downgrade variant if replanning due to budget overrun
+    if replan_count > 0 and any("Budget exceeded" in e for e in replan_errors):
+        downgrade = {"premium": "optimized", "optimized": "low_budget"}
+        if selected_plan in downgrade:
+            new_plan = downgrade[selected_plan]
+            print(f"[PLANNER] Downgrading {selected_plan} -> {new_plan} due to budget overrun")
+            selected_plan = new_plan
+    elif replan_count > 0:
+        print(f"[PLANNER] REPLANNING (attempt {replan_count}) - Errors: {replan_errors}")
     
     print(f"[PLANNER] Creating 3 plan variants for {destination}")
     print(f"[PLANNER] Base budget: ${budget:.2f}, Duration: {num_days} days")

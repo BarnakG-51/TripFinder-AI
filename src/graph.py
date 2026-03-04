@@ -8,12 +8,15 @@ from src.agents.researcher import researcher_node
 from src.agents.validator import validator_node
 
 # --- ROUTING LOGIC ---
+MAX_REPLAN_ITERATIONS = 2
+
 def should_continue(state: AgentState):
     if state["is_valid"]:
         return "end"
-    else:
-        # If not valid, go back to the planner to fix the mistakes
-        return "replan"
+    if state.get("replan_count", 0) >= MAX_REPLAN_ITERATIONS:
+        print(f"[GRAPH] Max replan iterations ({MAX_REPLAN_ITERATIONS}) reached. Forcing end.")
+        return "end"
+    return "replan"
 
 # --- GRAPH CONSTRUCTION ---
 workflow = StateGraph(AgentState)

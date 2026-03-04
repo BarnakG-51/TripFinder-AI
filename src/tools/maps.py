@@ -2,10 +2,9 @@
 Maps tool for calculating distances and travel times between locations.
 This tool simulates map/distance calculation functionality.
 """
-
+import os
+import requests
 from typing import Dict, Any, List
-import math
-
 
 def calculate_distance(origin: str, destination: str) -> Dict[str, Any]:
     """
@@ -18,23 +17,29 @@ def calculate_distance(origin: str, destination: str) -> Dict[str, Any]:
     Returns:
         Dictionary with distance and travel time information
     """
-    # Simulated distance calculation (would use Google Maps API in production)
-    # Using a simple hash-based approach for consistent "distances"
-    hash_val = abs(hash(f"{origin}-{destination}")) % 1000
-    distance_km = 100 + hash_val
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_MAPS_API_KEY not set")
     
-    result = {
-        "origin": origin,
-        "destination": destination,
-        "distance_km": distance_km,
-        "distance_miles": round(distance_km * 0.621371, 2),
-        "driving_time": f"{distance_km // 60}h {distance_km % 60}m",
-        "flying_time": f"{distance_km // 500}h {(distance_km % 500) // 10}m"
-    }
+    url = f"https://maps.googleapis.com/maps/api/distancematrix/json?origins={origin}&destinations={destination}&key={api_key}"
+    response = requests.get(url)
+    data = response.json()
     
-    print(f"[MAPS] Distance from {origin} to {destination}: {distance_km} km")
-    return result
+    if data['status'] != 'OK':
+        raise ValueError(f"Google Maps API error: {data['status']}")
+    
+    # Extract distance in km
+    distance = data['rows'][0]['elements'][0]['distance']['value'] / 1000  # meters to km
+    return distance
 
+def calculate_total_distance(travel_spots: List[str]) -> float:
+    """
+    Calculate total distance for a list of travel spots (assuming sequential travel).
+    """
+    total_distance = 0.0
+    for i in range(len(travel_spots) - 1):
+        total_distance += calculate_distance(travel_spots[i], travel_spots[i+1])
+    return total_distance
 
 def get_route(origin: str, destination: str, waypoints: List[str] = None) -> Dict[str, Any]:
     """
@@ -55,11 +60,16 @@ def get_route(origin: str, destination: str, waypoints: List[str] = None) -> Dic
     # Calculate distance for each segment
     current = origin
     for next_point in waypoints + [destination]:
-        segment_info = calculate_distance(current, next_point)
-        segments.append(segment_info)
-        total_distance += segment_info["distance_km"]
+        distance_km = calculate_distance(current, next_point)  # returns float
+        segments.append({"from": current, "to": next_point, "distance_km": round(distance_km, 2)})
+        total_distance += distance_km
         current = next_point
-    
+
+    AVG_DRIVING_SPEED_KMH = 60
+    time_hours = total_distance / AVG_DRIVING_SPEED_KMH
+    hours = int(time_hours)
+    minutes = int((time_hours - hours) * 60)
+
     result = {
         "origin": origin,
         "destination": destination,
@@ -67,7 +77,7 @@ def get_route(origin: str, destination: str, waypoints: List[str] = None) -> Dic
         "total_distance_km": total_distance,
         "total_distance_miles": round(total_distance * 0.621371, 2),
         "segments": segments,
-        "estimated_driving_time": f"{total_distance // 60}h {total_distance % 60}m"
+        "estimated_driving_time": f"{hours}h {minutes:02d}m"
     }
     
     print(f"[MAPS] Route from {origin} to {destination} via {len(waypoints)} waypoints: {total_distance} km")

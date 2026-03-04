@@ -10,10 +10,10 @@ import json
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 if not TAVILY_API_KEY:
-    raise EnvironmentError
-    ("[ERROR] TAVILY_API_KEY not found in environment variables."
-     "Please set it in your .env file or export it: export TAVILY_API_KEY='your_key'")
-    tavily_client = None
+    raise EnvironmentError(
+        "[ERROR] TAVILY_API_KEY not found in environment variables. "
+        "Please set it in your .env file or export it: export TAVILY_API_KEY='your_key'"
+    )
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
 class SearchError(Exception):
@@ -349,7 +349,7 @@ def _extract_amenities(content: str) -> List[str]:
 
 def _extract_airline(title: str, content: str) -> str:
     """Extract airline name from title or content."""
-    airlines = ["Delta", "United", "American", "Southwest", "JetBlue", "Spirit", "Frontier"]
+    airlines = ["Delta", "United", "American", "Southwest", "JetBlue", "Spirit", "Frontier", "IndiGo", "AirIndia", "AirIndiaExpress", "AkasaAir"]
     for airline in airlines:
         if airline.lower() in title.lower() or airline.lower() in content.lower():
             return airline

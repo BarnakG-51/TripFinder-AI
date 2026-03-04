@@ -35,3 +35,6 @@ class AgentState(TypedDict):
     # Internal flags to guide the logic
     is_valid: bool
     errors: List[str]
+
+    replan_count: int                    # How many times graph has replanned (init: 0)
+    search_errors: Optional[List[str]]   # Partial search failures from researcher

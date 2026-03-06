@@ -1,7 +1,31 @@
 from ..state import AgentState
-from ..tools.search import search_hotels, search_flights, search_travel_spots, search_restaurants, SearchError
+from ..tools.search import search_hotels, search_flights, search_travel_spots, search_restaurants, search_item_price, SearchError
 from ..tools.finance import calculate_total_cost
 from ..tools.maps import calculate_total_distance
+
+
+def _search_named_category(names: list, destination: str, category: str, errors: list, budget: float = None) -> list:
+    """
+    Search prices for each named item in the category.
+    Returns results sorted low to high by the category-appropriate price field.
+    Individual failures are appended to the shared errors list.
+    Returns an empty list if all searches fail (caller should fall back to broad search).
+    """
+    price_key = {"hotel": "price_per_night", "restaurant": "price_per_person", "activity": "entry_fee"}[category]
+    results = []
+    for item_name in names:
+        try:
+            result = search_item_price(item_name, destination, category, budget=budget)
+            results.append(result)
+            print(f"[RESEARCHER] {category} '{item_name}': ${result.get(price_key, '?')}")
+        except Exception as e:
+            err_msg = f"Named {category} search failed for '{item_name}': {str(e)}"
+            print(f"[RESEARCHER WARNING] {err_msg}")
+            errors.append(err_msg)
+    if results:
+        results.sort(key=lambda x: x.get(price_key) or float("inf"))
+        print(f"[RESEARCHER] {category}s sorted by price: {[r.get(price_key) for r in results]}")
+    return results
 
 
 def researcher_node(state: AgentState):
@@ -54,50 +78,102 @@ def researcher_node(state: AgentState):
             origin=flight_params["origin"],
             destination=flight_params["destination"],
             budget=flight_params["budget"],
-            preferences=flight_params.get("preferences", "cheapest")
+            preferences=flight_params.get("preferences", "cheapest"),
+            round_trip=True
         )
     except Exception as e:
         error_msg = f"Flight search failed: {str(e)}"
         print(f"[RESEARCHER ERROR] {error_msg}")
         errors.append(error_msg)
 
-    # Search hotels with error handling
-    try:
-        hotels = search_hotels(
-            destination=hotel_params["destination"],
-            budget=hotel_params["budget_per_night"],
-            num_nights=num_nights,
-            min_rating=hotel_params.get("min_rating", 3.0)
-        )
-    except Exception as e:
-        error_msg = f"Hotel search failed: {str(e)}"
-        print(f"[RESEARCHER ERROR] {error_msg}")
-        errors.append(error_msg)
+    # Named items from LLM (if available) and destination for targeted searches
+    named_items = search_plan.get("named_items")
+    destination = hotel_params.get("destination", state.get("destination", ""))
 
-    # Search activities with error handling
-    try:
-        activities = search_travel_spots(
-            destination=spot_params["destination"],
-            interests=spot_params.get("interests", []),
-            budget=spot_params["budget"],
-            priority=spot_params.get("priority", "quality")
+    # Search hotels — use named search if LLM provided names, else broad search
+    if named_items and named_items.get("hotels"):
+        print(f"[RESEARCHER] Using named hotel search for {len(named_items['hotels'])} items")
+        hotels = _search_named_category(
+            named_items["hotels"], destination, "hotel", errors,
+            budget=hotel_params.get("budget_per_night")
         )
-    except Exception as e:
-        error_msg = f"Activity search failed: {str(e)}"
-        print(f"[RESEARCHER ERROR] {error_msg}")
-        errors.append(error_msg)
+        if not hotels:
+            print("[RESEARCHER] All named hotel searches failed — falling back to broad search")
+            try:
+                hotels = search_hotels(
+                    destination=hotel_params["destination"],
+                    budget=hotel_params["budget_per_night"],
+                    num_nights=num_nights,
+                    min_rating=hotel_params.get("min_rating", 3.0)
+                )
+            except Exception as e:
+                errors.append(f"Hotel fallback search failed: {str(e)}")
+    else:
+        try:
+            hotels = search_hotels(
+                destination=hotel_params["destination"],
+                budget=hotel_params["budget_per_night"],
+                num_nights=num_nights,
+                min_rating=hotel_params.get("min_rating", 3.0)
+            )
+        except Exception as e:
+            error_msg = f"Hotel search failed: {str(e)}"
+            print(f"[RESEARCHER ERROR] {error_msg}")
+            errors.append(error_msg)
 
-    # Search restaurants with error handling
-    try:
-        restaurants = search_restaurants(
-            destination=restaurant_params["destination"],
-            cuisine=restaurant_params.get("cuisine"),
-            budget_per_meal=restaurant_params.get("budget_per_meal")
-        )
-    except Exception as e:
-        error_msg = f"Restaurant search failed: {str(e)}"
-        print(f"[RESEARCHER ERROR] {error_msg}")
-        errors.append(error_msg)
+    # Search activities — use named search if LLM provided names, else broad search
+    if named_items and named_items.get("activities"):
+        print(f"[RESEARCHER] Using named activity search for {len(named_items['activities'])} items")
+        activities = _search_named_category(named_items["activities"], destination, "activity", errors)
+        if not activities:
+            print("[RESEARCHER] All named activity searches failed — falling back to broad search")
+            try:
+                activities = search_travel_spots(
+                    destination=spot_params["destination"],
+                    interests=spot_params.get("interests", []),
+                    budget=spot_params["budget"],
+                    priority=spot_params.get("priority", "quality")
+                )
+            except Exception as e:
+                errors.append(f"Activity fallback search failed: {str(e)}")
+    else:
+        try:
+            activities = search_travel_spots(
+                destination=spot_params["destination"],
+                interests=spot_params.get("interests", []),
+                budget=spot_params["budget"],
+                priority=spot_params.get("priority", "quality")
+            )
+        except Exception as e:
+            error_msg = f"Activity search failed: {str(e)}"
+            print(f"[RESEARCHER ERROR] {error_msg}")
+            errors.append(error_msg)
+
+    # Search restaurants — use named search if LLM provided names, else broad search
+    if named_items and named_items.get("restaurants"):
+        print(f"[RESEARCHER] Using named restaurant search for {len(named_items['restaurants'])} items")
+        restaurants = _search_named_category(named_items["restaurants"], destination, "restaurant", errors)
+        if not restaurants:
+            print("[RESEARCHER] All named restaurant searches failed — falling back to broad search")
+            try:
+                restaurants = search_restaurants(
+                    destination=restaurant_params["destination"],
+                    cuisine=restaurant_params.get("cuisine"),
+                    budget_per_meal=restaurant_params.get("budget_per_meal")
+                )
+            except Exception as e:
+                errors.append(f"Restaurant fallback search failed: {str(e)}")
+    else:
+        try:
+            restaurants = search_restaurants(
+                destination=restaurant_params["destination"],
+                cuisine=restaurant_params.get("cuisine"),
+                budget_per_meal=restaurant_params.get("budget_per_meal")
+            )
+        except Exception as e:
+            error_msg = f"Restaurant search failed: {str(e)}"
+            print(f"[RESEARCHER ERROR] {error_msg}")
+            errors.append(error_msg)
 
     # Check if we have any results at all
     if not flights and not hotels and not activities and not restaurants:
@@ -132,12 +208,17 @@ def researcher_node(state: AgentState):
     # Build cost items and delegate to finance tool
     cost_items = []
     if flights:
-        cost_items.append({"category": "flights", "price": min(f["price"] for f in flights)})
+        # Use outbound + return for round-trip total; fall back to outbound only if no return_price
+        def flight_total(f):
+            return f["price"] + f.get("return_price", 0)
+        cost_items.append({"category": "flights", "price": min(flight_total(f) for f in flights)})
     if hotels:
-        cost_items.append({
-            "category": "hotels",
-            "price": min(h["price_per_night"] for h in hotels) * num_nights
-        })
+        valid_hotel_prices = [h["price_per_night"] for h in hotels if h.get("price_per_night") is not None]
+        if valid_hotel_prices:
+            cost_items.append({
+                "category": "hotels",
+                "price": min(valid_hotel_prices) * num_nights
+            })
     for activity in activities[:5]:
         cost_items.append({"category": "activities", "price": activity.get("entry_fee", 0)})
     if car_rental:

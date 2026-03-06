@@ -231,17 +231,29 @@ with tab_research:
                             or item.get("price_per_night")
                             or item.get("entry_fee")
                         )
+                        return_price = item.get("return_price")
                         c1, c2 = st.columns([3, 1])
                         c1.write(f"**{name}**")
-                        if price is not None:
+                        if return_price is not None and price is not None:
+                            # Flight round-trip: show total with breakdown
+                            total = price + return_price
+                            c2.write(f"${total:,.2f} RT")
+                            c1.caption(f"Outbound: ${price:,.2f}  |  Return: ${return_price:,.2f}")
+                        elif price is not None:
                             c2.write(f"${price:,.2f}" if isinstance(price, (int, float)) else str(price))
                         extra = {
                             k: v
                             for k, v in item.items()
-                            if k not in ("name", "airline", "route", "price", "price_per_night", "entry_fee")
+                            if k not in (
+                                "name", "airline", "route", "price", "price_per_night",
+                                "entry_fee", "return_price", "return_route"
+                            )
                         }
                         if extra:
                             with st.expander("Details"):
+                                if return_price is not None:
+                                    st.write(f"**return_route**: {item.get('return_route', '')}")
+                                    st.write(f"**return_price**: ${return_price:,.2f}")
                                 for k, v in extra.items():
                                     st.write(f"**{k}**: {v}")
                     else:

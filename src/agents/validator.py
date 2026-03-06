@@ -42,24 +42,35 @@ def validator_node(state: AgentState):
     itinerary = []
 
     if flights:
-        best_flight = min(flights, key=lambda f: f["price"])
-        itinerary.append({
+        best_flight = min(flights, key=lambda f: f.get("price", 0) + f.get("return_price", 0))
+        return_price = best_flight.get("return_price")
+        total_flight_cost = best_flight.get("price", 0) + (return_price or 0)
+        flight_entry = {
             "type": "flight",
             "name": f"Flight: {best_flight.get('route', 'Origin -> Destination')}",
-            "cost": best_flight["price"],
+            "cost": round(total_flight_cost, 2),
+            "outbound_price": best_flight.get("price"),
             "airline": best_flight.get("airline"),
             "duration": best_flight.get("duration"),
             "stops": best_flight.get("stops", 0),
             "url": best_flight.get("url", "")
-        })
+        }
+        if return_price is not None:
+            flight_entry["return_price"] = return_price
+            flight_entry["return_route"] = best_flight.get("return_route", "")
+        itinerary.append(flight_entry)
 
     if hotels:
-        best_hotel = min(hotels, key=lambda h: h["price_per_night"])
+        valid_hotels = [h for h in hotels if h.get("price_per_night") is not None]
+        if not valid_hotels:
+            valid_hotels = hotels  # fallback: use all, price may be None
+        best_hotel = min(valid_hotels, key=lambda h: h.get("price_per_night") or float("inf"))
+        price_per_night = best_hotel.get("price_per_night") or 0
         itinerary.append({
             "type": "hotel",
             "name": best_hotel.get("name", "Hotel"),
-            "cost": round(best_hotel["price_per_night"] * num_nights, 2),
-            "price_per_night": best_hotel["price_per_night"],
+            "cost": round(price_per_night * num_nights, 2),
+            "price_per_night": price_per_night,
             "num_nights": num_nights,
             "rating": best_hotel.get("rating"),
             "amenities": best_hotel.get("amenities", []),

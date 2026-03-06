@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 import os
 from tavily import TavilyClient
 import json
+from dotenv import load_dotenv
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 if not TAVILY_API_KEY:
@@ -14,6 +15,8 @@ if not TAVILY_API_KEY:
         "[ERROR] TAVILY_API_KEY not found in environment variables. "
         "Please set it in your .env file or export it: export TAVILY_API_KEY='your_key'"
     )
+
+load_dotenv()
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
 class SearchError(Exception):
@@ -87,32 +90,34 @@ def search_hotels(destination: str,
             f"Check your Tavily API key and internet connection"
         )
 
-def search_flights(origin: str, 
-                   destination: str, 
+def search_flights(origin: str,
+                   destination: str,
                    budget: float,
-                   preferences: str = "cheapest", 
-                   date: str = None) -> List[Dict[str, Any]]:
+                   preferences: str = "cheapest",
+                   date: str = None,
+                   round_trip: bool = True) -> List[Dict[str, Any]]:
     """
     Search for flights from origin to destination within budget.
-    
+
     Args:
         origin: Departure location
         destination: Arrival location
-        budget: Maximum ticket price
+        budget: Maximum ticket price (one-way)
         date: Travel date (optional)
-    
+        round_trip: If True, also search return leg and add return_price (default True)
+
     Returns:
         List of flight options with prices and details
     """
     # Error Handling
-    
+
     if not origin or not destination:
         raise SearchError("Both origin and destination are required for flight search.")
     if budget <= 0:
         raise SearchError(f"Invalid budget: ${budget}. Budget must be positive.")
     if preferences not in ["cheapest", "direct", "fastest"]:
         raise SearchError(f"Invalid preference: {preferences}. Must be 'cheapest, 'direct' or 'fastest'")
-    
+
     try:
         query = f"flights from {origin} to {destination} under ${int(budget)}"
         if preferences == "direct":
@@ -125,34 +130,69 @@ def search_flights(origin: str,
         if date:
             query += f" on {date}"
         print(f"[SEARCH] Searching flights with Tavily: {query}")
-        
-        # Perform Tavily search
+
+        # Perform Tavily search (outbound)
         response = tavily_client.search(
             query=query,
             search_depth="advanced",
             max_results=5,
             include_domains=["kayak.com", "skyscanner.com", "expedia.com", "momondo.com"]
         )
-        
+
         # Check if we got results
         if not response.get("results"):
             raise SearchError(
                 f"No flights found from {origin} to {destination} within budget ${budget}. "
                 f"Try increasing your budget or checking for different dates."
             )
-        
-        # Parse results
+
+        # Parse outbound results
         flights = _parse_flight_results(response, origin, destination, budget)
-        
+
         if not flights:
             raise SearchError(
                 f"Could not parse flight results from {origin} to {destination}. "
                 f"The search returned {len(response.get('results', []))} results but none matched criteria."
             )
-        
+
+        # Search return leg if round_trip requested
+        if round_trip:
+            return_query = f"flights from {destination} to {origin} under ${int(budget)}"
+            if preferences == "direct":
+                return_query += " direct non-stop"
+            elif preferences == "fastest":
+                return_query += " fastest shortest duration"
+            else:
+                return_query += " cheapest economy class"
+            print(f"[SEARCH] Searching return flights with Tavily: {return_query}")
+            try:
+                return_response = tavily_client.search(
+                    query=return_query,
+                    search_depth="advanced",
+                    max_results=5,
+                    include_domains=["kayak.com", "skyscanner.com", "expedia.com", "momondo.com"]
+                )
+                return_flights = _parse_flight_results(return_response, destination, origin, budget)
+                # Attach return price to each outbound flight (pair by index, fallback to cheapest)
+                cheapest_return = min((rf["price"] for rf in return_flights), default=None)
+                for i, flight in enumerate(flights):
+                    if i < len(return_flights):
+                        flight["return_price"] = return_flights[i]["price"]
+                    elif cheapest_return is not None:
+                        flight["return_price"] = cheapest_return
+                    else:
+                        flight["return_price"] = flight["price"]
+                    flight["return_route"] = f"{destination} -> {origin}"
+                print(f"[SEARCH] ✓ Attached return prices to {len(flights)} outbound flights")
+            except Exception as e:
+                print(f"[SEARCH] Warning: Return flight search failed ({e}), estimating from outbound price")
+                for flight in flights:
+                    flight["return_price"] = round(flight["price"] * 0.95, 2)
+                    flight["return_route"] = f"{destination} -> {origin}"
+
         print(f"[SEARCH] ✓ Found {len(flights)} flights from {origin} to {destination}")
         return flights
-        
+
     except SearchError:
         raise
     except Exception as e:
@@ -302,6 +342,61 @@ def search_restaurants(
         ) from e
 
 
+def search_item_price(name: str, destination: str, category: str, budget: float = None) -> Dict[str, Any]:
+    """
+    Search for the price of a specific named hotel, restaurant, or activity.
+
+    Args:
+        name:        The real name of the establishment or attraction.
+        destination: City/country for search context.
+        category:    Must be "hotel", "restaurant", or "activity".
+        budget:      Optional budget hint used as fallback when no price is extracted.
+
+    Returns:
+        A dict in the same shape as the corresponding broad-search result:
+          hotel      -> {name, price_per_night, rating, amenities, location, url, description}
+          restaurant -> {name, cuisine_type, price_per_person, rating, location, url, description}
+          activity   -> {name, category, rating, entry_fee, description, url, location}
+
+    Raises:
+        SearchError: if Tavily returns no results or the category is invalid.
+    """
+    if not name or not destination:
+        raise SearchError("Both name and destination are required for search_item_price.")
+
+    if category == "hotel":
+        query = f"{name} {destination} hotel price per night room rate"
+        domains = ["booking.com", "hotels.com", "tripadvisor.com", "agoda.com"]
+    elif category == "restaurant":
+        query = f"{name} {destination} restaurant price per person menu cost"
+        domains = ["tripadvisor.com", "yelp.com", "thefork.com", "timeout.com"]
+    elif category == "activity":
+        query = f"{name} {destination} admission ticket price entry fee"
+        domains = ["viator.com", "tripadvisor.com", "getyourguide.com", "timeout.com"]
+    else:
+        raise SearchError(
+            f"Invalid category '{category}'. Must be 'hotel', 'restaurant', or 'activity'."
+        )
+
+    print(f"[SEARCH] Named price search — {category}: '{name}' in {destination}")
+    try:
+        response = tavily_client.search(
+            query=query,
+            search_depth="advanced",
+            max_results=3,
+            include_domains=domains
+        )
+        if not response.get("results"):
+            raise SearchError(f"No results for {category} '{name}' in {destination}.")
+        return _parse_named_item_result(response, name, destination, category, budget=budget)
+    except SearchError:
+        raise
+    except Exception as e:
+        raise SearchError(
+            f"Named price search failed for {category} '{name}' in {destination}: {str(e)}"
+        ) from e
+
+
 # ============ RESULT PARSERS ============
 
 def _parse_hotel_results(response: Dict, destination: str, budget: float, min_rating: float) -> List[Dict[str, Any]]:
@@ -423,6 +518,73 @@ def _parse_restaurant_results(response: Dict, destination: str) -> List[Dict[str
     return restaurants
 
 
+def _parse_named_item_result(response: Dict, name: str, destination: str, category: str, budget: float = None) -> Dict[str, Any]:
+    """
+    Parse a Tavily named-search result into the category-appropriate dict shape.
+    Uses the best (first) result, then aggregates across all results for price accuracy.
+    """
+    best = response["results"][0]
+    content = best.get("content", "")
+    url = best.get("url", "")
+    description = content[:200] + "..." if len(content) > 200 else content
+    rating = _extract_rating(content) or 4.0
+
+    if category == "hotel":
+        prices = [_extract_price_per_night(r.get("content", "")) for r in response["results"]]
+        prices = [p for p in prices if p]
+        if prices:
+            price = sorted(prices)[len(prices) // 2]
+        elif budget:
+            price = round(budget * 0.7, 2)
+        else:
+            price = None
+        return {
+            "name": name,
+            "price_per_night": round(price, 2) if price is not None else None,
+            "rating": rating,
+            "amenities": _extract_amenities(content),
+            "location": destination,
+            "url": url,
+            "description": description
+        }
+
+    elif category == "restaurant":
+        price = _extract_meal_price(content)
+        if price == 25.0:  # default — try other results
+            for r in response["results"][1:]:
+                p = _extract_meal_price(r.get("content", ""))
+                if p != 25.0:
+                    price = p
+                    break
+        return {
+            "name": name,
+            "cuisine_type": _extract_cuisine(name, content),
+            "price_per_person": round(price, 2),
+            "rating": rating,
+            "location": destination,
+            "url": url,
+            "description": description
+        }
+
+    else:  # activity
+        fee = _extract_fee(content)
+        if fee == 15.0:  # default — try other results
+            for r in response["results"][1:]:
+                f = _extract_fee(r.get("content", ""))
+                if f != 15.0:
+                    fee = f
+                    break
+        return {
+            "name": name,
+            "category": "activity",
+            "rating": rating,
+            "entry_fee": round(fee, 2),
+            "description": description,
+            "url": url,
+            "location": destination
+        }
+
+
 # ============ HELPER FUNCTIONS ============
 
 def _extract_amenities(content: str) -> List[str]:
@@ -522,14 +684,24 @@ def _clean_title(title: str) -> str:
 def _extract_price_per_night(content: str) -> Optional[float]:
     """Try to extract an explicit per-night price from hotel content."""
     import re
-    # Patterns: "$120 per night", "$120/night", "120 USD per night"
-    match = re.search(
+    patterns = [
+        # "$120 per night", "$120/night"
         r'\$\s*(\d+(?:\.\d{2})?)\s*(?:per\s*night|/\s*night)',
-        content,
-        re.IGNORECASE
-    )
-    if match:
-        return float(match.group(1))
+        # "$120 a night", "$120 nightly"
+        r'\$\s*(\d+(?:\.\d{2})?)\s*(?:a\s*night|nightly)',
+        # "from $120", "starting at $120", "starting from $120"
+        r'(?:from|starting\s+at|starting\s+from)\s+\$\s*(\d+(?:\.\d{2})?)',
+        # "120 USD per night", "120 USD/night"
+        r'(\d+(?:\.\d{2})?)\s*USD\s*(?:per\s*night|/\s*night|nightly)',
+        # "rate of $120", "price of $120", "cost of $120"
+        r'(?:rate|price|cost)\s+of\s+\$\s*(\d+(?:\.\d{2})?)',
+        # "average nightly rate $120"
+        r'(?:average\s+)?nightly\s+(?:rate|price)\s+\$\s*(\d+(?:\.\d{2})?)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            return float(match.group(1))
     return None
 
 

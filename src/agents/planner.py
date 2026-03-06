@@ -1,4 +1,10 @@
+import os
+import json
+import re
+from langchain_groq import ChatGroq
+from langchain_core.messages import SystemMessage, HumanMessage
 from ..state import AgentState
+from dotenv import load_dotenv
 
 # Budget allocation constants for plan variants
 OPTIMIZED_BUDGET_PCT = 0.96  # 96% of budget
@@ -77,7 +83,22 @@ def planner_node(state: AgentState):
     
     # Get the search plan for the selected variant
     search_plan = plan_variants[selected_plan]
-    
+
+    # LLM-based named item generation for the selected plan only
+    budget_alloc = search_plan.get("budget_allocation", {})
+    named_items = _generate_named_items(
+        destination=destination,
+        plan_type=selected_plan,
+        hotel_budget_per_night=search_plan["hotels"]["budget_per_night"],
+        budget_per_meal=search_plan["restaurants"]["budget_per_meal"],
+        activities_budget=budget_alloc.get("activities", 0)
+    )
+    if named_items:
+        search_plan["named_items"] = named_items
+        print(f"[PLANNER] Added named_items to search_plan for {selected_plan} plan")
+    else:
+        print(f"[PLANNER] No named_items — researcher will use broad search")
+
     return {
         "messages": [f"Planner: Created 3 plan variants for {destination} - executing {selected_plan} plan"],
         "plan_variants": plan_variants,
@@ -177,4 +198,90 @@ def create_plan_for_budget(destination, origin, num_days, budget, plan_type="opt
             "meals_pct": meals_pct * 100
         }
     }
+
+
+def _safe_parse_named_items(text: str):
+    """
+    Safely parse the LLM JSON response into a named_items dict.
+    Tries direct parse, then regex extraction for markdown-fenced responses.
+    Returns the dict if valid, otherwise None.
+    """
+    def _validate(data):
+        for key in ("hotels", "restaurants", "activities"):
+            if not isinstance(data.get(key), list) or len(data[key]) == 0:
+                return False
+        return True
+
+    # Layer 1: direct JSON parse
+    try:
+        data = json.loads(text)
+        if _validate(data):
+            return data
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # Layer 2: extract JSON object from surrounding text (handles markdown fences)
+    json_match = re.search(r'\{[^{}]*"hotels"[^{}]*\}', text, re.DOTALL)
+    if json_match:
+        try:
+            data = json.loads(json_match.group())
+            if _validate(data):
+                return data
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    print("[PLANNER] Could not parse LLM response as valid named_items JSON")
+    return None
+
+
+
+def _generate_named_items(destination: str, plan_type: str, hotel_budget_per_night: float,
+                           budget_per_meal: float, activities_budget: float):
+    """
+    Call Groq LLM to generate 5 specific real establishment names per category.
+    Returns a dict with keys 'hotels', 'restaurants', 'activities' (each a list of 5 strings),
+    or None if the LLM call or JSON parse fails.
+    """
+
+    load_dotenv()
+
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    if not groq_api_key:
+        print("[PLANNER] GROQ_API_KEY not set — skipping LLM name generation")
+        return None
+
+    tier_labels = {"premium": "luxury", "optimized": "mid-range", "low_budget": "budget"}
+    tier = tier_labels.get(plan_type, "mid-range")
+
+    system_message = SystemMessage(content=(
+        "You are a travel planning expert with deep knowledge of real establishments worldwide. "
+        "Return a JSON object only — no markdown fences, no explanation, no extra text. "
+        "All names must be real, currently operating places appropriate for the destination and budget tier."
+    ))
+    user_message = HumanMessage(content=(
+        f"Generate 5 specific, real establishment names for a {tier} trip to {destination}.\n"
+        f"Budget context: Hotel ~${hotel_budget_per_night:.0f}/night, "
+        f"Restaurant ~${budget_per_meal:.0f}/person, Activities total ${activities_budget:.0f}.\n"
+        f'Respond with exactly: {{"hotels":["Name1","Name2","Name3","Name4","Name5"],'
+        f'"restaurants":["Name1","Name2","Name3","Name4","Name5"],'
+        f'"activities":["Name1","Name2","Name3","Name4","Name5"]}}'
+    ))
+
+    try:
+        llm = ChatGroq(
+            api_key=groq_api_key,
+            model="llama-3.3-70b-versatile",
+            temperature=0.2,
+            max_tokens=512
+        )
+        response = llm.invoke([system_message, user_message])
+        raw_text = response.content.strip()
+        print(f"[PLANNER] LLM response (first 300 chars): {raw_text[:300]}")
+        named_items = _safe_parse_named_items(raw_text)
+        if named_items is None:
+            print("[PLANNER] LLM JSON parse failed — falling back to broad search")
+        return named_items
+    except Exception as e:
+        print(f"[PLANNER] LLM call failed: {e} — falling back to broad search")
+        return None
 

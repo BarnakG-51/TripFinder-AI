@@ -3,3 +3,4 @@ langgraph==1.0.8
 tavily-python
 streamlit
 pydantic>=2.0
+python-dotenv

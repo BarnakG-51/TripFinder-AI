@@ -274,11 +274,67 @@ with tab_itinerary:
     if not result.itinerary:
         st.info("No itinerary items.")
     else:
-        for idx, item in enumerate(result.itinerary, 1):
-            name = item.get("name") or item.get("title") or f"Item {idx}"
-            with st.expander(f"{idx}. {name}"):
-                for k, v in item.items():
-                    st.write(f"**{k}**: {v}")
+        has_days = any(item.get("day") for item in result.itinerary)
+
+        if has_days:
+            type_label = {
+                "flight": "[Flight]",
+                "hotel": "[Hotel]",
+                "activity": "[Activity]",
+                "restaurant": "[Dinner]",
+                "transport": "[Travel]",
+            }
+
+            # Group items by day number preserving insertion order
+            days_map: dict[int, list] = {}
+            for item in result.itinerary:
+                day = item.get("day", 0)
+                if day not in days_map:
+                    days_map[day] = []
+                days_map[day].append(item)
+
+            for day_num in sorted(days_map.keys()):
+                day_items = days_map[day_num]
+                city = next(
+                    (i.get("city", "") for i in day_items if i.get("city")), ""
+                )
+                subtype = next(
+                    (i.get("subtype", "") for i in day_items), ""
+                )
+                header = f"Day {day_num}"
+                if city:
+                    header += f"  —  {city}"
+                if subtype == "arrival":
+                    header += "  (Arrival)"
+                elif subtype == "departure":
+                    header += "  (Departure)"
+                st.subheader(header)
+
+                for item in day_items:
+                    itype = item.get("type", "")
+                    label = type_label.get(itype, f"[{itype.title()}]")
+                    name = item.get("name", "")
+                    cost = item.get("cost")
+                    col1, col2 = st.columns([4, 1])
+                    col1.markdown(f"**{label}** {name}")
+                    if cost is not None and cost > 0:
+                        col2.write(f"${cost:,.2f}")
+
+                    skip_keys = {"type", "subtype", "name", "cost", "day", "city"}
+                    details = {k: v for k, v in item.items() if k not in skip_keys and v not in (None, "", [])}
+                    if details:
+                        with st.expander("Details"):
+                            for k, v in details.items():
+                                st.write(f"**{k}**: {v}")
+
+                st.divider()
+        else:
+            # Fallback: flat list (old format)
+            for idx, item in enumerate(result.itinerary, 1):
+                name = item.get("name") or item.get("title") or f"Item {idx}"
+                with st.expander(f"{idx}. {name}"):
+                    for k, v in item.items():
+                        st.write(f"**{k}**: {v}")
 
 # --- TAB 4: RAW STATE ---
 with tab_raw:

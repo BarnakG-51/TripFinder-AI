@@ -5,6 +5,9 @@ This tool simulates map/distance calculation functionality.
 import os
 import requests
 from typing import Dict, Any, List
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def calculate_distance(origin: str, destination: str) -> Dict[str, Any]:
     """

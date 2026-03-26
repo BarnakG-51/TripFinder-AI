@@ -4,6 +4,17 @@ import os
 from typing import Any, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, ValidationError
 
+# Load secrets from Streamlit secrets.toml and set as environment variables
+# This allows the modules to access them via os.getenv()
+try:
+    os.environ["TAVILY_API_KEY"] = st.secrets["TAVILY_API_KEY"]
+    os.environ["GOOGLE_MAPS_API_KEY"] = st.secrets["GOOGLE_MAPS_API_KEY"]
+    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+except KeyError as e:
+    st.error(f"❌ Missing API key in .streamlit/secrets.toml: {e}")
+    st.info("Please ensure all required API keys are set in .streamlit/secrets.toml")
+    st.stop()
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 # ---------------------------------------------------------------------------

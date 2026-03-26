@@ -4,9 +4,8 @@ import re
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from ..state import AgentState
-from dotenv import load_dotenv
 
-load_dotenv()
+# API keys loaded from Streamlit secrets via streamlit_app.py
 
 # Budget allocation constants for plan variants
 OPTIMIZED_BUDGET_PCT = 0.96  # 96% of budget

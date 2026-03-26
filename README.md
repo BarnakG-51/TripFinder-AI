@@ -2,6 +2,8 @@
 
 This project implements an AI-powered trip planning system with **3-variant plan generation** (Optimized, Premium, Low Budget) that uses a planner-researcher architecture to find hotels, flights, and travel spots.
 
+The website is live at https://tripfinder-ai.streamlit.app/
+
 ## Key Features
 
 - 🤖 **Natural Language Processing**: Parse user prompts to extract trip details
